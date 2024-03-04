@@ -39,8 +39,8 @@ if __name__ == '__main__':
 
           if (option == "a"):
 
-              catId = input("Enter the ID of the category: ")
-              catName = input("Enter the name of the category: ")
+              catId = int(input("Enter the ID of the category: "))
+              catName = str(input("Enter the name of the category: "))
 
               createCategory(cur, catId, catName)
               conn.commit()
@@ -58,11 +58,11 @@ if __name__ == '__main__':
 
           elif (option == "c"):
 
-              docId = input("Enter the ID of the document: ")
-              docText = input("Enter the text of the document: ")
-              docTitle = input("Enter the title of the document: ")
-              docDate = input("Enter the date of the document: ")
-              docCat = input("Enter the category of the document: ")
+              docId = int(input("Enter the ID of the document: "))
+              docText = str(input("Enter the text of the document: "))
+              docTitle = str(input("Enter the title of the document: "))
+              docDate = str(input("Enter the date of the document: "))
+              docCat = str(input("Enter the category of the document: "))
 
               updateDocument(cur, docId, docText, docTitle, docDate, docCat)
 

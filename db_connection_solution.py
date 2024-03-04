@@ -51,9 +51,9 @@ def createTables(cur, conn):
                         "category VARCHAR(255) NOT NULL, " \
                         "constraint Documents_pk primary key (id))"
 
-        create_indexing = "CREATE TABLE Indexing (doc_id SERIAL PRIMARY KEY, term varchar NOT NULL, term_count integer NOT NULL)" #doc_id -> doc.id; term -> list of words from doc.id ; term_count -> count of same word from doc.id
+        create_TERMS = "CREATE table Terms (term VARCHAR(50) PRIMARY KEY, term varchar NOT NULL, num_chars integer NOT NULL);"
 
-        create_TERMS = "CREATE table Terms (term_id SERIAL PRIMARY KEY, term varchar NOT NULL, num_chars integer NOT NULL);"
+        create_indexing = "CREATE TABLE Indexing (doc_id SERIAL PRIMARY KEY, term varchar NOT NULL, term_count integer NOT NULL)" #doc_id -> doc.id; term -> list of words from doc.id ; term_count -> count of same word from doc.id
         
         cur = conn.cursor()
         cur.execute(create_Categories) #creates Categories
@@ -61,7 +61,7 @@ def createTables(cur, conn):
         cur.execute(create_TERMS) #creates Terms
         cur.execute(create_indexing) #creates indexing
         
-        conn.commit()
+        cur.connection.commit()
     except:
         conn.rollback()
         print("There was a problem during the database creation or the database already exists.")
@@ -102,20 +102,19 @@ def createDocument(cur, docId, docText, docTitle, docDate, docCat):
     cur.execute(words_sql, (docId, ))
     words_result = cur.fetchall()
 
-    Words = [word for row in words_result for word in row['words'].split()]
-    
     #Changes to Lowercase and removes punctuation
-    terms1 = [''.join(char for char in word.lower() if char.isalpha()) for word in Words]
+    Words = [''.join(char.lower() for char in str(word['words']) if str(char).isalpha()) for word in words_result]
+    print("Terms in document", Words)
+
     
     print("Terms in document", Words) #words from documents
 
-    insert_docData_sql = """
-    INSERT INTO Documents (id, text, title, num_chars, date, category)
-    SELECT %s, %s, %s, %s, %s, %s
-    FROM Categories
-    WHERE Categories.name = %s
-    """
-    recset3 = (docId, docText, docTitle, num_chars1, docDate, docCat, docCat)
+    # #Changes to Lowercase and removes punctuation
+    # terms1 = [''.join(char for char in word.lower() if char.isalpha()) for word in Words]
+
+    insert_docData_sql = "INSERT INTO Documents (id, text, title, num_chars, date, category) SELECT %s, %s, %s, %s, %s, %s FROM Categories WHERE Categories.name = %s;"
+
+    recset3 = (docId, docText, docTitle, num_chars1, docDate, docCat,docCat)
     cur.execute(insert_docData_sql, (recset3))
     cur.connection.commit()
 
@@ -125,11 +124,11 @@ def createDocument(cur, docId, docText, docTitle, docDate, docCat):
     cur.execute(term_sql)
     existing_terms = (cur.fetchall()) #fetchs all the words from term column of Terms table
 
-    for term2 in terms1:
+    for term2 in Words:
     # 3.3 In case the term does not exist, insert it into the database
         if term2 not in existing_terms:
             insert_term_sql = "INSERT INTO Terms (term) VALUES (%s)" #Terms
-            cur.execute(insert_term_sql, (term2, ))
+            cur.execute(insert_term_sql, term2)
 
     print("All existing terms", existing_terms)
     #Commit the changes
@@ -140,7 +139,7 @@ def createDocument(cur, docId, docText, docTitle, docDate, docCat):
     # 4.2 Create a data structure the stores how many times (count) each term appears in the document
     freq = {}
     collection = []
-    for w in terms1:
+    for w in Words:
         if w not in collection:
             collection.append(w)
             freq[w] = 1
