@@ -51,9 +51,9 @@ def createTables(cur, conn):
                         "category VARCHAR(255) NOT NULL, " \
                         "constraint Documents_pk primary key (id))"
 
-        create_indexing = "CREATE TABLE Indexing (doc_id integer NOT NULL, term varchar NOT NULL, term_count integer NOT NULL)" #doc_id -> doc.id; term -> list of words from doc.id ; term_count -> count of same word from doc.id
+        create_indexing = "CREATE TABLE Indexing (doc_id SERIAL PRIMARY KEY, term varchar NOT NULL, term_count integer NOT NULL)" #doc_id -> doc.id; term -> list of words from doc.id ; term_count -> count of same word from doc.id
 
-        create_TERMS = "CREATE table Terms (term SERIAL PRIMARY KEY, num_chars integer NOT NULL);"
+        create_TERMS = "CREATE table Terms (term_id SERIAL PRIMARY KEY, term varchar NOT NULL, num_chars integer NOT NULL);"
         
         cur = conn.cursor()
         cur.execute(create_Categories) #creates Categories
@@ -107,7 +107,7 @@ def createDocument(cur, docId, docText, docTitle, docDate, docCat):
     #Changes to Lowercase and removes punctuation
     terms1 = [''.join(char for char in word.lower() if char.isalpha()) for word in Words]
     
-    print("Terms in document", Words)
+    print("Terms in document", Words) #words from documents
 
     insert_docData_sql = """
     INSERT INTO Documents (id, text, title, num_chars, date, category)
@@ -117,6 +117,8 @@ def createDocument(cur, docId, docText, docTitle, docDate, docCat):
     """
     recset3 = (docId, docText, docTitle, num_chars1, docDate, docCat, docCat)
     cur.execute(insert_docData_sql, (recset3))
+    cur.connection.commit()
+
 
     # 3.2 For each term identified, check if the term already exists in the database
     term_sql = "SELECT term FROM Terms" #gets term column from Terms table
@@ -150,7 +152,7 @@ def createDocument(cur, docId, docText, docTitle, docDate, docCat):
     #indexing table: doc_id -> doc.id; term -> list of words from doc.id ; term_count -> count of same word from doc.id
     indexing_sql_Ins = "INSERT INTO Indexing (doc_id, term, term_count) VALUES (%s,%s,%s)"
     for k,v in freq.items(): #k -> word and v -> count
-        recset = [docId, k,v]
+        recset = [docId, k,v] #Can have multiple docId with different words and it's freq. For example, doc_id = 1 -> Months : 3, doc_id = 1 -> Summers : 2. How do I have multiple docId in Indexing?
         cur.execute(indexing_sql_Ins, (recset, ))
 
 
@@ -158,34 +160,39 @@ def deleteDocument(cur, docId):
 
     # 1 Query the index based on the document to identify terms
     # 1.1 For each term identified, delete its occurrences in the index for that document
+    #create_indexing = "CREATE TABLE Indexing (doc_id integer NOT NULL, term varchar NOT NULL, term_count integer NOT NULL)" #doc_id -> doc.id; term -> list of words from doc.id ; term_count -> count of same word from doc.id
+
     delete_DocID_sql = "DELETE FROM Indexing WHERE doc_id=%s"
-    cur.execute(delete_DocID_sql, (docId, ))
+    cur.execute(delete_DocID_sql, (docId))
+    cur.connection.commit()
     # 1.2 Check if there are no more occurrences of the term in another document. If this happens, delete the term from the database.
-    # --> add your Python code here
-   
+    # try to see if the words within docId are in other docId. If yes -> don't delete words from Terms Table, else -> delete words from Terms Table
+    words_sql = "SELECT regexp_split_to_table(text, E'\\s+') AS words FROM Documents WHERE id = %s"
+    cur.execute(words_sql, (docId))
+    words_result = cur.fetchall()
 
-    # #try to see if the words within docId are in other docId. If yes -> don't delete words from Terms Table, else -> delete words from Terms Table
-    # words_sql = "SELECT regexp_split_to_table(text, E'\\s+') AS words FROM Documents WHERE id = %s"
-    # cur.execute(words_sql, (docId))
-    # words_result = cur.fetchall()
-
-    # Words = [word for row in words_result for word in row[list('words')]]
+    Words = [word for row in words_result for word in row['words'].split()]
     
-    # #Changes to Lowercase and removes punctuation
-    # terms_docID = [''.join(char for char in word.lower() if char.isalpha()) for word in Words] #List of words from docId
+    #Changes to Lowercase and removes punctuation
+    terms_docID = [''.join(char for char in word.lower() if char.isalpha()) for word in Words] #List of words from docId
 
-    # other_words_sql = "SELECT regexp_split_to_table(text, E'\\s+') AS Other FROM Documents WHERE id <> %s"
-    # cur.execute(other_words_sql, (other_words_sql))
+    other_words_sql = "SELECT regexp_split_to_table(text, E'\\s+') AS Other FROM Documents WHERE id <> %s"
+    cur.execute(other_words_sql, (other_words_sql))
+    other_words_result = cur.fetchall()
 
-    # other_words_result = cur.fetchall()
-    # other_Words = [word for row in other_words_result for word in row[list('Other')]]
-    # other_terms_otherDocId = [''.join(char for char in word.lower() if char.isalpha()) for word in other_Words] #List of words from other docId
+    other_Words = [word for row in other_words_result for word in row['Other'].split()]
 
+    other_terms_otherDocId = [''.join(char for char in word.lower() if char.isalpha()) for word in other_Words] #List of words from other docId
 
-        
+    for i in terms_docID:
+        if i not in other_terms_otherDocId:
+            delete_term_sql = "DELETE term FROM Terms where term = %s"
+            cur.execute(delete_term_sql, (i))
+
     # 2 Delete the document from the database
     delete_Document_sql = "DELETE FROM Documents WHERE id=%s"
-    cur.execute(delete_Document_sql, (docId))
+    cur.execute(delete_Document_sql, docId)
+    cur.connection.commit()
 
 def updateDocument(cur, docId, docText, docTitle, docDate, docCat):
 
@@ -195,16 +202,23 @@ def updateDocument(cur, docId, docText, docTitle, docDate, docCat):
     # 2 Create the document with the same id
     createDocument(cur, docId, docText, docTitle, docDate, docCat)
 
-# def getIndex(cur):
+def getIndex(cur):
 
     # Query the database to return the documents where each term occurs with their corresponding count. Output example:
     # {'baseball':'Exercise:1','summer':'Exercise:1,California:1,Arizona:1','months':'Exercise:1,Discovery:3'}
     # ...
-    # --> add your Python code here
+    #id, text, title, num_chars, date, category
+    #create_indexing = "CREATE TABLE Indexing (doc_id integer NOT NULL, term varchar NOT NULL, term_count integer NOT NULL)" 
+    #doc_id -> doc.id; term -> list of words from doc.id ; term_count -> count of same word from doc.id
+    index_sql ="SELECT d.id AS document_id, d.title, i.doc_id, i.term, i.term_count FROM Documents d JOIN Indexing i ON d.id = i.doc_id JOIN Terms t ON i.term = t.term;"
+    cur.execute(index_sql)
+    query = cur.fetchall()
+    print(query)
 
-freq_Words_sql = "SELECT words, COUNT(*) AS word_count" \
-"FROM ( " \
-    "SELECT LOWER(regexp_split_to_table(regexp_replace(text, '[^\w\s]', '', 'g'), E'\\s+')) AS words "\
-    "FROM Documents "\
-") AS subquery "\
-"GROUP BY words; "
+
+# freq_Words_sql = "SELECT words, COUNT(*) AS word_count" \
+# "FROM ( " \
+#     "SELECT LOWER(regexp_split_to_table(regexp_replace(text, '[^\w\s]', '', 'g'), E'\\s+')) AS words "\
+#     "FROM Documents "\
+# ") AS subquery "\
+# "GROUP BY words; "
